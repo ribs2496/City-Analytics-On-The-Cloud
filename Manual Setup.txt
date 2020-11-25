@@ -1,0 +1,159 @@
+
+This file includes all the steps required to manually create and configure instances on NECTAR, create a couchDB cluster on selected nodes and handle the cluster parameters.
+
+
+1. Create a key pair to access the virtual instance
+Compute>Key Pairs> Key type>SSH key
+(Save the private key)
+
+2. Ports set up
+Network>Security groups>Create Security Group>SSH>Create 
+Network>Security Groups>SSH>Manage rules>Add rule> SSH (Port 22 will be set up for SSH connections to the VM)
+
+
+3. Create and instance
+Compute> Instances
+Source> NeCTAR Ubuntu 18.04 LTS (Bionic) amd64
+Flavor>uom.mse.2c9g
+Network>qh2-uom-internal> This is not connected to the internet- need to use the university VPN to access these instances
+Security Groups> Add SSH group to remotely access the VM
+
+4. Create and attach a volume
+Volume>Volume>create volume
+Go to volume>Manage volume attachments> select the instance you want
+
+5. Access VM via SSH
+
+Fow windows:
+Use Putty key gen to generate key with the saved private key:
+Load>Select the saved key file>Save private key (ppk format)
+
+Connect to uni VPN and then use putty
+Seelct the private key file to putty for the connection
+SSH>Auth>select the last saved private key (ppk)>
+Go to session> enter IP of instance>open> enter username: ubuntu
+
+Now follow steps 6and 7 on all the created nodes.
+
+6.Setting up proxy
+
+sudo nano/etc/environment
+http_proxy="http://wwwproxy.unimelb.edu.au:8000"
+https_proxy="http://wwwproxy.unimelb.edu.au:8000"
+ftp_proxy="http://wwwproxy.unimelb.edu.au:8000"
+HTTP_PROXY="http://wwwproxy.unimelb.edu.au:8000"
+HTTPS_PROXY="http://wwwproxy.unimelb.edu.au:8000"
+no_proxy=localhost,127.0.0.1,localaddress,172.16.0.0/12,.melbourne.rc.nectar.org.au,.storage.unimelb.edu.au,.cloud.unimelb.edu.au
+
+Logout of SSH session; and re-login to take /etc/environment settings into effect.
+
+Now can connect to internet, install any packages
+
+
+7.Format volumes
+```
+
+Create the data directory inside mount (We will use this directory to create databases, store all the scripts etc)
+
+--View the vloume
+sudo fdisk -l
+
+--Format volume
+sudo mkfs.ext4 /dev/vdb 
+
+--Create data directory
+sudo mkdir /data
+
+--Mount the volume on the directory
+sudo mount -t auto /dev/vdb  /data
+df -h
+
+Follow step 8 to create the CouchDB cluster on the three nodes for the cluster
+
+8. To set up couchdb
+
+echo "deb https://apache.bintray.com/couchdb-deb bionic main" \
+    | sudo tee -a /etc/apt/sources.list
+curl -L https://couchdb.apache.org/repo/bintray-pubkey.asc \
+    | sudo apt-key add -
+
+Run below command and select cluster mode and finish the couchDB installation 
+
+sudo apt-get update && sudo apt-get install couchdb
+
+I used admin as both username and password in creating the cluster.
+
+9. Add nodes to the cluster
+
+Use below URL with one cluster IP and add the other nodes to the cluster and finish the cluster set up.
+http://<server1>:5984/_utils#setup
+
+10.Give read write access to the /data folder
+
+sudo chmod a+rwx /path/to/file
+
+11.  Set data directory of couchdb in /opt/couchdb/etc/local.ini
+First create two directories named couchdb and views in the data directory.
+
+sudo /etc/init.d/couchdb stop
+```
+[couchdb]
+database_dir = /data/couchdb
+view_index_dir = /data/views
+```
+
+sudo /etc/init.d/couchdb start
+
+12. Set the number of shards and replicas at globa level in local.ini (3 shards and 2 replicas)
+
+sudo /etc/init.d/couchdb stop
+sudo nano /opt/couchdb/etc/local.ini
+```
+[cluster]
+q=3
+n=2
+
+```
+sudo /etc/init.d/couchdb start
+
+13. Also add below lines to /opt/couchdb/etc/vm.args 
+
+```
+-kernel inet_dist_listen_min 9100
+-kernel inet_dist_listen_max 9100
+
+```
+
+14. To check whether CouchDB is working
+curl -X GET http://admin:admin@<server ip>:5984/_all_dbs
+
+15. To check cluster nodes
+curl -X GET http://admin:admin@<server ip>:5984/_membership
+
+16.Add a node to cluster
+curl -X PUT "http://xxx.xxx.xxx.xxx:5986/_nodes/node2@yyy.yyy.yyy.yyy" -d {}
+
+17. Remove a node from a cluster
+curl -X DELETE "http://xxx.xxx.xxx.xxx:5986/_nodes/node2@yyy.yyy.yyy.yyy" -d {}
+
+18. Install required software packages
+
+sudo apt install python-pip
+pip install vim
+pip install tweepy
+
+
+19. To create a database
+
+curl -X PUT "http://admin:admin@<ip>:5984/tweets"
+
+
+
+
+
+
+
+
+
+
+
